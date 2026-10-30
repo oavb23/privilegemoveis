@@ -9,8 +9,8 @@ const estado = {
   filtro: { ativo: 'todos', categoria: '', estado: '' },
   visao: localStorage.getItem('bf_visao') || 'grade',
   temR2: false,
-  categorias: ['Sala de Estar', 'Sala de Jantar', 'Outros'],
-  estados: ['Pronta Entrega', 'Sob Encomenda', 'Última Unidade'],
+  categorias: [],
+  estados: [],
 };
 
 const app = document.getElementById('app');
@@ -30,6 +30,7 @@ const ICO = {
   video:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-2.5v8l-5-2.5z" stroke-linejoin="round"/></svg>',
   lixo:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 002 2h8a2 2 0 002-2l1-13M9 7V4h6v3"/></svg>',
   certo:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>',
+  etiquetas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h5.2a2 2 0 011.4.6l7.8 7.8a2 2 0 010 2.8l-4.2 4.2a2 2 0 01-2.8 0L5.6 12.6A2 2 0 015 11.2V7z"/><circle cx="8.5" cy="9.5" r="1.2" fill="currentColor"/></svg>',
   sair:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h5"/></svg>',
   roda:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9" opacity=".9"/></svg>',
 };
@@ -68,6 +69,11 @@ const paraNumero = (txt) => {
   return isFinite(n) ? n : null;
 };
 const paraCampo = (v) => (v === null || v === undefined || v === '' ? '' : moeda(v));
+
+const codigoDe = (txt) => String(txt ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+
+const taxDe = (tipo) => (tipo === 'categoria' ? estado.categorias : estado.estados);
 
 /* ---------------- login ---------------- */
 
@@ -125,8 +131,8 @@ function cartao (p) {
     : '<div class="preco" style="color:var(--fraco)">sem preço</div>';
   const etiquetas = [
     `<span class="etiqueta ${p.ativo ? 'on' : 'off'}">${p.ativo ? 'ativo' : 'desativado'}</span>`,
-    p.categoria ? `<span class="etiqueta">${esc(p.categoria)}</span>` : '',
-    p.estado ? `<span class="etiqueta">${esc(p.estado)}</span>` : '',
+    p.categoria ? `<span class="etiqueta">${esc(p.categoriaNome || p.categoria)}</span>` : '',
+    p.estado ? `<span class="etiqueta">${esc(p.estadoNome || p.estado)}</span>` : '',
   ].join('');
   return h(`<button class="cartao" data-id="${esc(p.id)}">
       <div class="foto">${foto}</div>
@@ -146,6 +152,7 @@ function desenhar () {
         <div class="envolve">
           <div class="marca"><i></i>Produtos <small>· Black Friday</small></div>
           <div class="espaco"></div>
+          <button class="bt so-icone vazio" id="bt-categorias" title="Categorias e estados">${ICO.etiquetas}</button>
           <button class="bt so-icone vazio" id="bt-visao" title="Alternar lista e grade">
             ${estado.visao === 'grade' ? ICO.lista : ICO.grade}</button>
           <button class="bt so-icone vazio" id="bt-sair" title="Sair">${ICO.sair}</button>
@@ -167,10 +174,10 @@ function desenhar () {
             `<button class="marca-filtro" data-tipo="ativo" data-valor="${v}" aria-pressed="${estado.filtro.ativo === v}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}
           <span style="width:1px;background:var(--linha);flex:none;margin:0 3px"></span>
           ${estado.categorias.map(c =>
-            `<button class="marca-filtro" data-tipo="categoria" data-valor="${esc(c)}" aria-pressed="${estado.filtro.categoria === c}">${esc(c)}</button>`).join('')}
+            `<button class="marca-filtro" data-tipo="categoria" data-valor="${esc(c.codigo)}" aria-pressed="${estado.filtro.categoria === c.codigo}">${esc(c.nome)}</button>`).join('')}
           <span style="width:1px;background:var(--linha);flex:none;margin:0 3px"></span>
           ${estado.estados.map(s =>
-            `<button class="marca-filtro" data-tipo="estado" data-valor="${esc(s)}" aria-pressed="${estado.filtro.estado === s}">${esc(s)}</button>`).join('')}
+            `<button class="marca-filtro" data-tipo="estado" data-valor="${esc(s.codigo)}" aria-pressed="${estado.filtro.estado === s.codigo}">${esc(s.nome)}</button>`).join('')}
         </div>
         <div class="${estado.visao}" id="colecao"></div>
       </div>
@@ -191,6 +198,7 @@ function desenhar () {
 
   tela.querySelector('#bt-novo').onclick = () => painelProduto(null);
   tela.querySelector('#bt-baixar').onclick = () => modalBaixar();
+  tela.querySelector('#bt-categorias').onclick = () => painelCategorias();
   tela.querySelector('#bt-visao').onclick = () => {
     estado.visao = estado.visao === 'grade' ? 'lista' : 'grade';
     localStorage.setItem('bf_visao', estado.visao);
@@ -266,7 +274,7 @@ function painelProduto (id) {
     : { ...estado.produtos.find(x => x.id === id) };
 
   const opcoes = (lista, atual) => ['<option value=""></option>']
-    .concat(lista.map(v => `<option value="${esc(v)}"${v === atual ? ' selected' : ''}>${esc(v)}</option>`))
+    .concat(lista.map(v => `<option value="${esc(v.codigo)}"${v.codigo === atual ? ' selected' : ''}>${esc(v.nome)}</option>`))
     .join('');
 
   const painel = h(`
@@ -478,6 +486,127 @@ function painelProduto (id) {
   });
 }
 
+/* ---------------- categorias e estados ---------------- */
+
+const GRUPOS = [
+  { tipo: 'categoria', titulo: 'Categorias', novo: 'Nova categoria' },
+  { tipo: 'estado',    titulo: 'Estados',    novo: 'Novo estado' },
+];
+
+function painelCategorias () {
+  const painel = h(`
+    <div class="painel">
+      <div class="painel-topo">
+        <button class="bt so-icone vazio" id="bt-volta">${ICO.volta}</button>
+        <h2>Categorias e estados</h2>
+      </div>
+      <div class="painel-corpo"><div class="envolve">
+        <div class="nota">O <b>código</b> é o que você usa no repetidor do editor
+        (<code>data-bf-categoria="sala-de-jantar"</code>). O <b>nome exibido</b> é o que aparece
+        no site e nas etiquetas. Trocar o nome não quebra nada; trocar o código exige acertar o editor.</div>
+        <div id="grupos"></div>
+      </div></div>
+      <div class="painel-base">
+        <button class="bt destaque" id="bt-fechar">Fechar</button>
+      </div>
+    </div>`);
+  document.body.appendChild(painel);
+  const fechar = () => { painel.remove(); desenhar(); };
+  painel.querySelector('#bt-volta').onclick = fechar;
+  painel.querySelector('#bt-fechar').onclick = fechar;
+
+  const alvo = painel.querySelector('#grupos');
+
+  const aplicar = (dados) => {
+    estado.categorias = dados.categorias || [];
+    estado.estados = dados.estados || [];
+    pintar();
+  };
+
+  function pintar () {
+    alvo.replaceChildren(...GRUPOS.map(g => {
+      const itens = taxDe(g.tipo);
+      const bloco = h(`<div>
+        <div class="secao">${g.titulo}</div>
+        <div class="tax-lista">
+          ${itens.map(t => `
+            <div class="tax-linha" data-id="${esc(t.id)}">
+              <input class="tax-nome" type="text" value="${esc(t.nome)}" aria-label="Nome exibido">
+              <input class="tax-codigo" type="text" value="${esc(t.codigo)}" aria-label="Código" spellcheck="false">
+              <button class="bt so-icone perigo tax-remove" title="Remover">${ICO.lixo}</button>
+            </div>`).join('')}
+          ${itens.length ? '' : '<div class="dica" style="padding:4px 2px 10px">Nenhum item ainda.</div>'}
+        </div>
+        <div class="tax-linha tax-novo">
+          <input class="tax-nome" type="text" placeholder="${esc(g.novo)}" aria-label="Nome exibido">
+          <input class="tax-codigo" type="text" placeholder="código (sai do nome)" aria-label="Código" spellcheck="false">
+          <button class="bt so-icone destaque tax-add" title="Adicionar">${ICO.mais}</button>
+        </div>
+      </div>`);
+
+      /* salvar alteracao ao sair do campo */
+      bloco.querySelectorAll('.tax-lista .tax-linha').forEach(linha => {
+        const id = linha.dataset.id;
+        const atual = itens.find(x => x.id === id);
+        const nome = linha.querySelector('.tax-nome');
+        const codigo = linha.querySelector('.tax-codigo');
+        const salvar = async () => {
+          const novoNome = nome.value.trim();
+          const novoCodigo = codigoDe(codigo.value);
+          if (!novoNome) { nome.value = atual.nome; return; }
+          if (novoNome === atual.nome && novoCodigo === atual.codigo) { codigo.value = atual.codigo; return; }
+          codigo.value = novoCodigo;
+          try {
+            aplicar(await api('taxonomias/' + id, { metodo: 'PUT', corpo: { nome: novoNome, codigo: novoCodigo } }));
+            avisar(novoCodigo !== atual.codigo ? 'Código alterado — acerte o editor' : 'Salvo');
+          } catch (e) {
+            avisar(e.message, true);
+            nome.value = atual.nome; codigo.value = atual.codigo;
+          }
+        };
+        nome.addEventListener('blur', salvar);
+        codigo.addEventListener('blur', salvar);
+
+        linha.querySelector('.tax-remove').onclick = () => confirmar({
+          titulo: 'Remover item',
+          texto: `“${atual.nome}” sai da lista. Produtos que usam esse item precisam ser trocados antes.`,
+          acao: 'Remover', perigo: true,
+          aoConfirmar: async () => {
+            aplicar(await api('taxonomias/' + id, { metodo: 'DELETE' }));
+            avisar('Item removido');
+          },
+        });
+      });
+
+      /* adicionar */
+      const novo = bloco.querySelector('.tax-novo');
+      const nNome = novo.querySelector('.tax-nome');
+      const nCodigo = novo.querySelector('.tax-codigo');
+      let codigoNaMao = false;
+      nCodigo.addEventListener('input', () => { codigoNaMao = true; });
+      nNome.addEventListener('input', () => { if (!codigoNaMao) nCodigo.value = codigoDe(nNome.value); });
+      const adicionar = async () => {
+        const nome = nNome.value.trim();
+        if (!nome) { nNome.focus(); return; }
+        try {
+          aplicar(await api('taxonomias', { metodo: 'POST',
+            corpo: { tipo: g.tipo, nome, codigo: codigoDe(nCodigo.value) || codigoDe(nome) } }));
+          avisar('Item adicionado');
+        } catch (e) { avisar(e.message, true); }
+      };
+      novo.querySelector('.tax-add').onclick = adicionar;
+      [nNome, nCodigo].forEach(i => i.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); adicionar(); }
+      }));
+
+      return bloco;
+    }));
+  }
+
+  pintar();
+  api('taxonomias').then(aplicar).catch(e => avisar(e.message, true));
+}
+
 /* ---------------- confirmacao ---------------- */
 
 function confirmar ({ titulo, texto, acao, perigo, aoConfirmar }) {
@@ -642,9 +771,10 @@ async function iniciar () {
     const s = await api('sessao');
     if (!s.ok) { telaEntrada(); return; }
     estado.temR2 = !!s.temR2;
-    const [{ produtos }, opcoes] = await Promise.all([api('produtos'), api('opcoes').catch(() => null)]);
-    estado.produtos = produtos;
-    if (opcoes) { estado.categorias = opcoes.categorias; estado.estados = opcoes.estados; }
+    const dados = await api('produtos');
+    estado.produtos = dados.produtos;
+    estado.categorias = dados.categorias || [];
+    estado.estados = dados.estados || [];
     desenhar();
   } catch (e) {
     telaEntrada(e.message);

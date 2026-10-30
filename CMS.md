@@ -91,20 +91,52 @@ A4/pecas-a4.pdf                   um PDF, uma página por produto
 **Apagar** fica dentro da página do produto, no ícone de lixeira do canto superior
 direito, e pede confirmação.
 
+## Categorias e estados
+
+O botão de etiqueta no cabeçalho do painel (ao lado da troca de visualização e do sair)
+abre **Categorias e estados**. Cada item tem dois campos:
+
+- **Nome exibido** — o que aparece no site e nas etiquetas. Pode mudar à vontade.
+- **Código** — o que o repetidor do editor usa (`sala-de-jantar`). Sai automático do nome
+  quando você cria o item. Mudar depois exige acertar o editor.
+
+O produto guarda o **código**, não o nome. Por isso renomear "Sala de Jantar" para
+"Jantar" não quebra nada, e se você mudar o código os produtos acompanham sozinhos.
+Remover um item em uso é bloqueado: a mensagem diz em quantos produtos ele está.
+
 ## O que alimenta o site
 
 `assets/bf/vitrine.js` já está incluído no `index.html`. Ele lê `/api/produtos.json`,
 pega o primeiro card do carrossel como modelo e o repete uma vez por produto ativo,
-preenchendo nome, foto, preços, estado e o link do WhatsApp.
+preenchendo nome, foto, preços, estado e o selo de desconto (calculado do De/Por).
 
-Para filtrar um carrossel por categoria ou estado, ponha no container:
+### Contrato do repetidor (o que o editor precisa emitir)
 
 ```html
-<div data-bf="produtos" data-bf-categoria="Sala de Jantar"></div>
-<div data-bf="produtos" data-bf-estado="Pronta Entrega" data-bf-limite="8"></div>
+<div data-bf="produtos"
+     data-bf-categoria="sala-de-jantar"
+     data-bf-estado="pronta-entrega"
+     data-bf-limite="12">
+  <!-- o primeiro filho é o card modelo; os demais são descartados -->
+</div>
 ```
 
-Sem nenhum desses atributos ele usa `#crs-todos` e mostra todos os ativos.
+Todos os atributos de filtro são opcionais e podem se combinar. Os valores são os
+**códigos** das taxonomias (o nome exibido também é aceito, mas prefira o código).
+Sem nenhum elemento com `data-bf="produtos"` na página, o script usa `#crs-todos`
+e mostra todos os ativos.
+
+Para o editor montar um seletor em vez de campo livre, os códigos estão em
+`/api/taxonomias.json` (público, sem senha):
+
+```json
+{ "categorias": [{ "id": "...", "codigo": "sala-de-jantar", "nome": "Sala de Jantar", "ordem": 2 }],
+  "estados":    [{ "id": "...", "codigo": "pronta-entrega", "nome": "Pronta Entrega", "ordem": 1 }] }
+```
+
+O botão de contato do card **não** é mexido por padrão: continua fazendo o que o editor
+definiu. Só vira link direto de WhatsApp se o container declarar
+`data-bf-whatsapp="5515999999999"`.
 
 > **Atenção ao reexportar pela Prancheta de Landing:** o export sobrescreve o
 > `index.html` e leva junto a linha abaixo. Reponha-a antes de `</body>`:

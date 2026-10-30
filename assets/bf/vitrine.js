@@ -4,8 +4,8 @@
 
    Como marcar na página (opcional — sem nada disso ele assume #crs-todos):
      data-bf="produtos"              no container do carrossel
-     data-bf-categoria="Sala de Estar"   filtra por categoria
-     data-bf-estado="Pronta Entrega"     filtra por estado
+     data-bf-categoria="sala-de-estar"   filtra pelo codigo da categoria
+     data-bf-estado="pronta-entrega"     filtra pelo codigo do estado
      data-bf-limite="12"                 limita a quantidade
      data-bf-whatsapp="5515999999999"    troca o botao de contato por link direto
                                          do WhatsApp (sem isso o botao continua
@@ -26,6 +26,8 @@ const ESTADOS = ['pronta entrega', 'sob encomenda', 'última unidade', 'ultima u
 const moeda = (v) => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ehValor = (t) => /^\s*\d{1,3}(\.\d{3})*,\d{2}\s*$/.test(t) || /^\s*\d+,\d{2}\s*$/.test(t);
 const semBarra = (s) => String(s || '').replace(/\s*\|\s*/g, ' ');
+const codigoDe = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 /* devolve todos os <p>/<span> de texto dentro do card, na ordem do documento */
 function textos (card) {
@@ -91,8 +93,9 @@ function preencher (card, p, whatsapp) {
     .forEach(el => { el.textContent = `${p.parcelas || 12}x de R$`; });
 
   /* estado (pronta entrega, sob encomenda...) */
+  const rotuloEstado = p.estadoNome || p.estado || '';
   campos.filter(el => ESTADOS.includes(el.textContent.trim().toLowerCase()))
-    .forEach(el => { el.textContent = (p.estado || '').toUpperCase(); p.estado ? el.style.removeProperty('display') : el.style.setProperty('display', 'none', 'important'); });
+    .forEach(el => { el.textContent = rotuloEstado.toUpperCase(); rotuloEstado ? el.style.removeProperty('display') : el.style.setProperty('display', 'none', 'important'); });
 
   /* selo de desconto */
   const desconto = p.preco_de && p.preco_por && p.preco_de > p.preco_por
@@ -131,8 +134,13 @@ function ligar (container, produtos) {
   const cat = container.dataset.bfCategoria;
   const est = container.dataset.bfEstado;
   const lim = Number(container.dataset.bfLimite) || 0;
-  if (cat) lista = lista.filter(p => p.categoria === cat);
-  if (est) lista = lista.filter(p => p.estado === est);
+  /* aceita o codigo (recomendado) ou o nome exibido */
+  const bate = (p, campo, alvo) => {
+    const a = codigoDe(alvo);
+    return codigoDe(p[campo]) === a || codigoDe(p[campo + 'Nome']) === a;
+  };
+  if (cat) lista = lista.filter(p => bate(p, 'categoria', cat));
+  if (est) lista = lista.filter(p => bate(p, 'estado', est));
   if (lim) lista = lista.slice(0, lim);
 
   if (!lista.length) { container.dataset.bfVazio = '1'; return; }

@@ -5,9 +5,8 @@
    Variavel de ambiente:
      CMS_SENHA  -> senha unica de acesso ao painel */
 
-const CATEGORIAS = ['Sala de Estar', 'Sala de Jantar', 'Outros'];
-const ESTADOS    = ['Pronta Entrega', 'Sob Encomenda', 'Última Unidade'];
-const LIMITE_D1  = 600 * 1024;
+const TIPOS     = ['categoria', 'estado'];
+const LIMITE_D1 = 600 * 1024;
 const VALIDADE   = 60 * 60 * 24 * 30; /* 30 dias */
 
 const json = (dados, status = 200, extra = {}) => new Response(JSON.stringify(dados), {
@@ -59,6 +58,10 @@ async function autenticado (ctx) {
 const id = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const agora = () => new Date().toISOString();
 
+const slug = (v) => String(v ?? '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+
 const num = (v) => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(String(v).replace(/\./g, '').replace(',', '.'));
@@ -84,10 +87,29 @@ function normalizar (c) {
   };
 }
 
+async function lerTaxonomias (env) {
+  const { results } = await env.BD.prepare(
+    'SELECT id, tipo, codigo, nome, ordem FROM taxonomias ORDER BY tipo, ordem, nome').all();
+  return results;
+}
+
+const agrupar = (taxs) => ({
+  categorias: taxs.filter(t => t.tipo === 'categoria'),
+  estados: taxs.filter(t => t.tipo === 'estado'),
+});
+
 const COLUNAS = ['nome', 'categoria', 'estado', 'preco_de', 'preco_por', 'parcelado',
   'medida', 'material', 'descricao', 'imagem', 'video', 'ativo', 'ordem'];
 
-const paraFora = (r) => ({ ...r, ativo: !!r.ativo,
+function nomeDe (taxs, tipo, codigo) {
+  if (!codigo) return '';
+  const t = taxs.find(x => x.tipo === tipo && x.codigo === codigo);
+  return t ? t.nome : codigo;
+}
+
+const paraFora = (r, taxs = []) => ({ ...r, ativo: !!r.ativo,
+  categoriaNome: nomeDe(taxs, 'categoria', r.categoria),
+  estadoNome: nomeDe(taxs, 'estado', r.estado),
   imagemUrl: r.imagem ? '/m/' + r.imagem : null,
   videoUrl: r.video ? '/m/' + r.video : null });
 
@@ -133,13 +155,19 @@ export async function onRequest (ctx) {
   try {
     /* ---- publico: usado pela landing page ---- */
     if (rota === 'produtos.json' && metodo === 'GET') {
-      const { results } = await env.BD.prepare(
-        'SELECT * FROM produtos WHERE ativo = 1 ORDER BY ordem, criado_em').all();
-      return json({ produtos: results.map(paraFora) }, 200,
+      const [lista, taxs] = await Promise.all([
+        env.BD.prepare('SELECT * FROM produtos WHERE ativo = 1 ORDER BY ordem, criado_em').all(),
+        lerTaxonomias(env),
+      ]);
+      return json({ produtos: lista.results.map(r => paraFora(r, taxs)), ...agrupar(taxs) }, 200,
         { 'cache-control': 'public, max-age=30', 'access-control-allow-origin': '*' });
     }
 
-    if (rota === 'opcoes' && metodo === 'GET') return json({ categorias: CATEGORIAS, estados: ESTADOS });
+    if (rota === 'taxonomias.json' && metodo === 'GET') {
+      const taxs = await lerTaxonomias(env);
+      return json(agrupar(taxs), 200,
+        { 'cache-control': 'public, max-age=30', 'access-control-allow-origin': '*' });
+    }
 
     /* ---- sessao ---- */
     if (rota === 'entrar' && metodo === 'POST') {
@@ -164,8 +192,11 @@ export async function onRequest (ctx) {
     if (rota === 'produtos') {
       const alvo = partes[1];
       if (metodo === 'GET' && !alvo) {
-        const { results } = await env.BD.prepare('SELECT * FROM produtos ORDER BY ordem, criado_em').all();
-        return json({ produtos: results.map(paraFora) });
+        const [lista, taxs] = await Promise.all([
+          env.BD.prepare('SELECT * FROM produtos ORDER BY ordem, criado_em').all(),
+          lerTaxonomias(env),
+        ]);
+        return json({ produtos: lista.results.map(r => paraFora(r, taxs)), ...agrupar(taxs) });
       }
       if (metodo === 'POST' && !alvo) {
         const c = normalizar(await request.json());
@@ -176,7 +207,7 @@ export async function onRequest (ctx) {
            VALUES (?, ${COLUNAS.map(() => '?').join(', ')}, ?, ?)`)
           .bind(novo, ...COLUNAS.map(k => c[k]), t, t).run();
         const r = await env.BD.prepare('SELECT * FROM produtos WHERE id = ?').bind(novo).first();
-        return json({ produto: paraFora(r) }, 201);
+        return json({ produto: paraFora(r, await lerTaxonomias(env)) }, 201);
       }
       if (metodo === 'PUT' && alvo) {
         const antigo = await env.BD.prepare('SELECT * FROM produtos WHERE id = ?').bind(alvo).first();
@@ -189,7 +220,7 @@ export async function onRequest (ctx) {
         if (antigo.imagem && antigo.imagem !== c.imagem) await apagarMidia(env, antigo.imagem);
         if (antigo.video && antigo.video !== c.video) await apagarMidia(env, antigo.video);
         const r = await env.BD.prepare('SELECT * FROM produtos WHERE id = ?').bind(alvo).first();
-        return json({ produto: paraFora(r) });
+        return json({ produto: paraFora(r, await lerTaxonomias(env)) });
       }
       if (metodo === 'DELETE' && alvo) {
         const antigo = await env.BD.prepare('SELECT * FROM produtos WHERE id = ?').bind(alvo).first();
@@ -198,6 +229,68 @@ export async function onRequest (ctx) {
         await apagarMidia(env, antigo.imagem);
         await apagarMidia(env, antigo.video);
         return json({ ok: true });
+      }
+    }
+
+    if (rota === 'taxonomias') {
+      const alvo = partes[1];
+
+      if (metodo === 'GET' && !alvo) return json(agrupar(await lerTaxonomias(env)));
+
+      if (metodo === 'POST' && !alvo) {
+        const c = await request.json().catch(() => ({}));
+        const tipo = TIPOS.includes(c.tipo) ? c.tipo : null;
+        if (!tipo) return erro('tipo precisa ser "categoria" ou "estado"');
+        const nome = txt(c.nome, 60).trim();
+        if (!nome) return erro('o nome exibido é obrigatório');
+        const codigo = slug(c.codigo || nome);
+        if (!codigo) return erro('o código precisa ter ao menos uma letra ou número');
+        const jaTem = await env.BD.prepare(
+          'SELECT id FROM taxonomias WHERE tipo = ? AND codigo = ?').bind(tipo, codigo).first();
+        if (jaTem) return erro(`já existe um item com o código "${codigo}"`);
+        const maior = await env.BD.prepare(
+          'SELECT MAX(ordem) AS m FROM taxonomias WHERE tipo = ?').bind(tipo).first();
+        const novo = id();
+        await env.BD.prepare(
+          'INSERT INTO taxonomias (id, tipo, codigo, nome, ordem, criado_em) VALUES (?,?,?,?,?,?)')
+          .bind(novo, tipo, codigo, nome, (maior?.m || 0) + 1, agora()).run();
+        return json({ ...agrupar(await lerTaxonomias(env)), criado: novo }, 201);
+      }
+
+      if (metodo === 'PUT' && alvo) {
+        const antigo = await env.BD.prepare('SELECT * FROM taxonomias WHERE id = ?').bind(alvo).first();
+        if (!antigo) return erro('item não encontrado', 404);
+        const c = await request.json().catch(() => ({}));
+        const nome = txt(c.nome, 60).trim() || antigo.nome;
+        const codigo = slug(c.codigo || antigo.codigo);
+        if (!codigo) return erro('o código precisa ter ao menos uma letra ou número');
+        if (codigo !== antigo.codigo) {
+          const jaTem = await env.BD.prepare(
+            'SELECT id FROM taxonomias WHERE tipo = ? AND codigo = ? AND id <> ?')
+            .bind(antigo.tipo, codigo, alvo).first();
+          if (jaTem) return erro(`já existe um item com o código "${codigo}"`);
+        }
+        await env.BD.prepare('UPDATE taxonomias SET nome = ?, codigo = ?, ordem = ? WHERE id = ?')
+          .bind(nome, codigo, Number(c.ordem) || antigo.ordem, alvo).run();
+        if (codigo !== antigo.codigo) {
+          const coluna = antigo.tipo === 'categoria' ? 'categoria' : 'estado';
+          await env.BD.prepare(`UPDATE produtos SET ${coluna} = ? WHERE ${coluna} = ?`)
+            .bind(codigo, antigo.codigo).run();
+        }
+        return json(agrupar(await lerTaxonomias(env)));
+      }
+
+      if (metodo === 'DELETE' && alvo) {
+        const antigo = await env.BD.prepare('SELECT * FROM taxonomias WHERE id = ?').bind(alvo).first();
+        if (!antigo) return erro('item não encontrado', 404);
+        const coluna = antigo.tipo === 'categoria' ? 'categoria' : 'estado';
+        const uso = await env.BD.prepare(
+          `SELECT COUNT(*) AS n FROM produtos WHERE ${coluna} = ?`).bind(antigo.codigo).first();
+        if (uso?.n) {
+          return erro(`"${antigo.nome}" está em ${uso.n} produto(s). Troque esses produtos antes de remover.`, 409);
+        }
+        await env.BD.prepare('DELETE FROM taxonomias WHERE id = ?').bind(alvo).run();
+        return json(agrupar(await lerTaxonomias(env)));
       }
     }
 
