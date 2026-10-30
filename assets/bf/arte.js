@@ -155,6 +155,8 @@ function grupoPreco (ctx, numero, cfg, dy, cor) {
   escrever(ctx, numero, x0 + wRs + cfg.gap, cfg.baseNum + dy, cfg.trackNum);
 }
 
+const semBarra = (s) => String(s || '').replace(/\s*\|\s*/g, ' ');
+
 function linhasDoNome (ctx, nome) {
   const bruto = String(nome || '').replace(/\s*\|\s*/g, '\n');
   if (bruto.includes('\n')) {
@@ -304,8 +306,9 @@ function paginaA4 (pdf, produto) {
   /* titulo: ate 2 linhas, encolhe se precisar */
   pdf.cor(PRETO);
   const t = A4.titulo;
-  let tamT = t.tam, lt = pdf.quebrar('bol', produto.nome, t.largMax, tamT);
-  while (lt.length > t.linhas && tamT > 20) { tamT -= 1; lt = pdf.quebrar('bol', produto.nome, t.largMax, tamT); }
+  const titulo = semBarra(produto.nome);
+  let tamT = t.tam, lt = pdf.quebrar('bol', titulo, t.largMax, tamT);
+  while (lt.length > t.linhas && tamT > 20) { tamT -= 1; lt = pdf.quebrar('bol', titulo, t.largMax, tamT); }
   lt = lt.slice(0, t.linhas);
   const pitchT = t.pitch * tamT / t.tam;
   const baseT = t.centro - (lt.length - 1) * pitchT / 2;
