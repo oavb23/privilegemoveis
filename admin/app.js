@@ -31,6 +31,7 @@ const ICO = {
   lixo:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 002 2h8a2 2 0 002-2l1-13M9 7V4h6v3"/></svg>',
   certo:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>',
   etiquetas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h5.2a2 2 0 011.4.6l7.8 7.8a2 2 0 010 2.8l-4.2 4.2a2 2 0 01-2.8 0L5.6 12.6A2 2 0 015 11.2V7z"/><circle cx="8.5" cy="9.5" r="1.2" fill="currentColor"/></svg>',
+  copia:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
   sair:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h5"/></svg>',
   roda:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9" opacity=".9"/></svg>',
 };
@@ -505,6 +506,21 @@ function painelCategorias () {
         (<code>data-bf-categoria="sala-de-jantar"</code>). O <b>nome exibido</b> é o que aparece
         no site e nas etiquetas. Trocar o nome não quebra nada; trocar o código exige acertar o editor.</div>
         <div id="grupos"></div>
+        <div class="secao">Código do repetidor</div>
+        <div class="dica" style="margin:-4px 0 12px">Escolha o filtro e cole o trecho no editor,
+        no container que vai repetir os cards. O primeiro filho dele é o card modelo.</div>
+        <div class="dupla">
+          <div class="campo"><label for="rep-cat">Categoria</label>
+            <select id="rep-cat"></select></div>
+          <div class="campo"><label for="rep-est">Estado</label>
+            <select id="rep-est"></select></div>
+        </div>
+        <div class="campo"><label for="rep-lim">Máximo de itens (opcional)</label>
+          <input id="rep-lim" type="text" inputmode="numeric" placeholder="sem limite"></div>
+        <div class="trecho">
+          <pre id="rep-codigo"></pre>
+          <button class="bt vazio" id="rep-copiar">${ICO.copia} Copiar</button>
+        </div>
       </div></div>
       <div class="painel-base">
         <button class="bt destaque" id="bt-fechar">Fechar</button>
@@ -521,6 +537,7 @@ function painelCategorias () {
     estado.categorias = dados.categorias || [];
     estado.estados = dados.estados || [];
     pintar();
+    if (painel.isConnected) painel.querySelector('#rep-cat') && pintarSeletores();
   };
 
   function pintar () {
@@ -603,8 +620,51 @@ function painelCategorias () {
     }));
   }
 
+  /* montador do trecho do repetidor */
+  const selCat = painel.querySelector('#rep-cat');
+  const selEst = painel.querySelector('#rep-est');
+  const campoLim = painel.querySelector('#rep-lim');
+  const saida = painel.querySelector('#rep-codigo');
+
+  function montarTrecho () {
+    const partes = ['data-bf="produtos"'];
+    if (selCat.value) partes.push(`data-bf-categoria="${selCat.value}"`);
+    if (selEst.value) partes.push(`data-bf-estado="${selEst.value}"`);
+    const lim = String(campoLim.value || '').replace(/\D/g, '');
+    if (lim) partes.push(`data-bf-limite="${lim}"`);
+    saida.textContent = `<div ${partes.join('\n     ')}>\n  <!-- primeiro filho = card modelo -->\n</div>`;
+  }
+
+  function pintarSeletores () {
+    const op = (lista, rotuloVazio) => `<option value="">${rotuloVazio}</option>` +
+      lista.map(t => `<option value="${esc(t.codigo)}">${esc(t.nome)}</option>`).join('');
+    const cat = selCat.value, est = selEst.value;
+    selCat.innerHTML = op(estado.categorias, 'todas as categorias');
+    selEst.innerHTML = op(estado.estados, 'todos os estados');
+    selCat.value = cat; selEst.value = est;
+    montarTrecho();
+  }
+
+  [selCat, selEst].forEach(el => el.addEventListener('change', montarTrecho));
+  campoLim.addEventListener('input', montarTrecho);
+
+  painel.querySelector('#rep-copiar').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(saida.textContent);
+      avisar('Trecho copiado');
+    } catch (_) {
+      const faixa = document.createRange();
+      faixa.selectNodeContents(saida);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(faixa);
+      avisar('Selecionado — use Copiar do menu');
+    }
+  };
+
+  const aplicarTudo = (dados) => { aplicar(dados); pintarSeletores(); };
+
   pintar();
-  api('taxonomias').then(aplicar).catch(e => avisar(e.message, true));
+  pintarSeletores();
+  api('taxonomias').then(aplicarTudo).catch(e => avisar(e.message, true));
 }
 
 /* ---------------- confirmacao ---------------- */

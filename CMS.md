@@ -110,6 +110,12 @@ Remover um item em uso é bloqueado: a mensagem diz em quantos produtos ele est�
 pega o primeiro card do carrossel como modelo e o repete uma vez por produto ativo,
 preenchendo nome, foto, preços, estado e o selo de desconto (calculado do De/Por).
 
+### Onde pegar o trecho pronto
+
+Na mesma tela de **Categorias e estados**, no fim, tem **Código do repetidor**: escolhe
+categoria, estado e o máximo de itens, e ele monta o trecho com os códigos certos, com
+botão de copiar. É de lá que sai o que você cola no editor.
+
 ### Contrato do repetidor (o que o editor precisa emitir)
 
 ```html
