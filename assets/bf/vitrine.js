@@ -7,6 +7,9 @@
      data-bf-categoria="Sala de Estar"   filtra por categoria
      data-bf-estado="Pronta Entrega"     filtra por estado
      data-bf-limite="12"                 limita a quantidade
+     data-bf-whatsapp="5515999999999"    troca o botao de contato por link direto
+                                         do WhatsApp (sem isso o botao continua
+                                         fazendo o que o editor definiu)
 
    Se o editor mudar a estrutura do card, ajuste SELETORES abaixo. */
 
@@ -19,7 +22,6 @@ const SELETORES = {
 };
 
 const ESTADOS = ['pronta entrega', 'sob encomenda', 'última unidade', 'ultima unidade'];
-const WHATSAPP = '5515996509030';
 
 const moeda = (v) => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ehValor = (t) => /^\s*\d{1,3}(\.\d{3})*,\d{2}\s*$/.test(t) || /^\s*\d+,\d{2}\s*$/.test(t);
@@ -39,7 +41,7 @@ function mostrarTudo (card) {
   });
 }
 
-function preencher (card, p) {
+function preencher (card, p, whatsapp) {
   card.dataset.bfId = p.id;
   card.dataset.bfCategoria = p.categoria || '';
   card.dataset.bfEstado = p.estado || '';
@@ -101,14 +103,18 @@ function preencher (card, p) {
       else { el.textContent = ''; el.style.setProperty('display', 'none', 'important'); }
     });
 
-  /* whatsapp */
-  const ligacao = card.querySelector(SELETORES.whatsapp);
-  if (ligacao) {
-    const msg = encodeURIComponent(`Olá! Tenho interesse no ${semBarra(p.nome)} da Black Friday.`);
-    ligacao.setAttribute('href', `https://wa.me/${WHATSAPP}?text=${msg}`);
-    ligacao.setAttribute('target', '_blank');
-    ligacao.setAttribute('rel', 'noopener');
-    ligacao.removeAttribute('onclick');
+  /* Botao de contato: por padrao NAO mexemos nele — o card do editor ja tem o
+     comportamento certo (abrir o formulario do CRM). So vira link direto de
+     WhatsApp se o container declarar o numero em data-bf-whatsapp. */
+  if (whatsapp) {
+    const ligacao = card.querySelector(SELETORES.whatsapp);
+    if (ligacao) {
+      const msg = encodeURIComponent(`Olá! Tenho interesse no ${semBarra(p.nome)} da Black Friday.`);
+      ligacao.setAttribute('href', `https://wa.me/${whatsapp}?text=${msg}`);
+      ligacao.setAttribute('target', '_blank');
+      ligacao.setAttribute('rel', 'noopener');
+      ligacao.removeAttribute('onclick');
+    }
   }
 }
 
@@ -131,9 +137,10 @@ function ligar (container, produtos) {
 
   if (!lista.length) { container.dataset.bfVazio = '1'; return; }
 
+  const whatsapp = (container.dataset.bfWhatsapp || '').replace(/\D/g, '');
   const novos = lista.map(p => {
     const c = modelo.cloneNode(true);
-    preencher(c, p);
+    preencher(c, p, whatsapp);
     return c;
   });
   cards.slice(1).forEach(c => c.remove());
