@@ -1,0 +1,69 @@
+{
+  "nome": "Coleção 5",
+  "campos": [
+    {
+      "chave": "nome",
+      "nome": "Nome",
+      "tipo": "texto"
+    },
+    {
+      "chave": "descricao",
+      "nome": "Descrição",
+      "tipo": "longo"
+    },
+    {
+      "chave": "valor",
+      "nome": "Valor",
+      "tipo": "moeda"
+    },
+    {
+      "chave": "categoria",
+      "nome": "Categoria",
+      "tipo": "opcao"
+    },
+    {
+      "chave": "imagem",
+      "nome": "Imagem",
+      "tipo": "imagem"
+    },
+    {
+      "chave": "link",
+      "nome": "Link",
+      "tipo": "link"
+    },
+    {
+      "chave": "ativo",
+      "nome": "Ativo",
+      "tipo": "bool"
+    }
+  ],
+  "itens": [
+    {
+      "nome": "Primeiro item",
+      "descricao": "Troque este texto pelo seu.",
+      "valor": "199,90",
+      "categoria": "Categoria A",
+      "imagem": "",
+      "link": "",
+      "ativo": true
+    },
+    {
+      "nome": "Segundo item",
+      "descricao": "Cada linha daqui vira uma cópia do modelo.",
+      "valor": "299,90",
+      "categoria": "Categoria A",
+      "imagem": "",
+      "link": "",
+      "ativo": true
+    },
+    {
+      "nome": "Terceiro item",
+      "descricao": "Editar o modelo muda todas.",
+      "valor": "449,00",
+      "categoria": "Categoria B",
+      "imagem": "",
+      "link": "",
+      "ativo": true
+    }
+  ]
+}
