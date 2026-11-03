@@ -47,6 +47,50 @@ function lerCookie (req, nome) {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+/* ---------- limite de tentativas de login ---------- */
+/* A senha do CMS e unica e o repositorio e publico: sem limite, forca bruta
+   contra /api/entrar e so questao de tempo. Bloqueia por IP apos 8 erros. */
+
+const BLOQ_ERROS = 8;
+const BLOQ_MIN   = 15;
+
+async function garantirTentativas (env) {
+  await env.BD.prepare(
+    'CREATE TABLE IF NOT EXISTS login_tentativas (ip TEXT PRIMARY KEY, n INTEGER NOT NULL DEFAULT 0, ate INTEGER NOT NULL DEFAULT 0)').run();
+}
+
+const ipDe = (req) => req.headers.get('cf-connecting-ip') || 'desconhecido';
+
+async function bloqueadoAte (env, ip) {
+  const t = await env.BD.prepare('SELECT n, ate FROM login_tentativas WHERE ip = ?').bind(ip).first();
+  return { n: t?.n || 0, ate: Number(t?.ate || 0) };
+}
+
+async function registrarErro (env, ip, n) {
+  const proximo = n + 1;
+  const bloquear = proximo >= BLOQ_ERROS;
+  await env.BD.prepare(
+    `INSERT INTO login_tentativas (ip, n, ate) VALUES (?, ?, ?)
+     ON CONFLICT(ip) DO UPDATE SET n = excluded.n, ate = excluded.ate`)
+    .bind(ip, bloquear ? 0 : proximo, bloquear ? Date.now() + BLOQ_MIN * 60000 : 0).run();
+  return bloquear;
+}
+
+const limparTentativas = (env, ip) =>
+  env.BD.prepare('DELETE FROM login_tentativas WHERE ip = ?').bind(ip).run();
+
+/* comparacao em tempo constante: nao revela a senha pela diferenca de tempo */
+async function senhaConfere (enviada, real) {
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest('SHA-256', texto.encode(String(enviada))),
+    crypto.subtle.digest('SHA-256', texto.encode(String(real))),
+  ]);
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  let dif = 0;
+  for (let i = 0; i < x.length; i++) dif |= x[i] ^ y[i];
+  return dif === 0;
+}
+
 async function autenticado (ctx) {
   const senha = ctx.env.CMS_SENHA;
   if (!senha) return false;
@@ -172,8 +216,21 @@ export async function onRequest (ctx) {
     /* ---- sessao ---- */
     if (rota === 'entrar' && metodo === 'POST') {
       if (!env.CMS_SENHA) return erro('defina a variável CMS_SENHA nas configurações do projeto', 503);
+      await garantirTentativas(env);
+      const ip = ipDe(request);
+      const { n, ate } = await bloqueadoAte(env, ip);
+      if (ate > Date.now()) {
+        const faltam = Math.ceil((ate - Date.now()) / 60000);
+        return erro(`muitas tentativas seguidas; tente de novo em ${faltam} min`, 429);
+      }
       const corpo = await request.json().catch(() => ({}));
-      if (String(corpo.senha || '') !== env.CMS_SENHA) return erro('senha incorreta', 401);
+      if (!(await senhaConfere(corpo.senha || '', env.CMS_SENHA))) {
+        const bloqueou = await registrarErro(env, ip, n);
+        return bloqueou
+          ? erro(`muitas tentativas seguidas; tente de novo em ${BLOQ_MIN} min`, 429)
+          : erro('senha incorreta', 401);
+      }
+      await limparTentativas(env, ip);
       const token = await assinar(env.CMS_SENHA, Math.floor(Date.now() / 1000) + VALIDADE);
       return json({ ok: true }, 200, {
         'set-cookie': `bf_sessao=${encodeURIComponent(token)}; Path=/; Max-Age=${VALIDADE}; HttpOnly; Secure; SameSite=Lax`,
